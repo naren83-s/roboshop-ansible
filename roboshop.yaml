@@ -10,7 +10,7 @@
     - catalogue
   tasks:
   - name: Create ec2 instances
-    amazon.aws.ec2-instance:
+    amazon.aws.ec2_instance:
       instance_type: "t3.micro"
       security_group: "{{ Sg_id }}"
       image_id: "{{ Ami_id }}"

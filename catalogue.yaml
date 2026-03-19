@@ -3,20 +3,81 @@
   connection: local
   become: yes
   tasks:
-  - name: enable nodejs 20
-    ansible.builtin.command: dnf install nodejs 20
+  - name: enable nodejs 20 #command line module
+    ansible.builtin.command: dnf module enable nodejs:20 -y
 
-  - name: install nodejs
+  - name: install nodejs #dnf module
     ansible.builtin.dnf:
       name: nodejs
       state: present
 
-  - name: create system user
+  - name: create system user #create user module
     ansible.builtin.user:
       name: roboshop
       system: true
       home: /app
       shell: /sbin/nologin
       comment: "Roboshop system user"
+ 
+  - name: Delete app derectory #Delete previous app directory
+    ansible.builtin.file:
+      path: /app
+      state: absent
+    
+  - name: Create app user # create app directory
+    ansible.builtin.file:
+      path: /app
+      state: directory #to create directory in care we use directory keyword
+
+  - name: delete catalogue zip file # delete previous zip files
+    ansible.builtin.file:
+      path: /tmp/catalogue.zip
+      state: absent
+
+  - name: download catalogue # download url module
+    ansible.builtin.get_url:
+      url: https://roboshop-artifacts.s3.amazonaws.com/catalogue-v3.zip 
+      dest: /tmp/catalogue.zip
+
+  - name: unarchieve catalogue # unzip module
+    ansible.builtin.unarchive:
+      src: /tmp/catalogue.zip
+      dest: /app
+      remote_src: yes
+
+  - name: install dependencies #dependency module ********
+    community.general.npm:
+      path: /app
+
+  - name: copy catalogue service # copy module 
+    ansible.builtin.copy:
+      src: catalogue.service
+      dest: /etc/systemd/system/catalogue.service
+
+  - name: copy mongo repo # copy module
+    ansible.builtin.copy:
+      src: mongo.repo
+      dest: /etc/yum.repos.d/mongo.repo
   
-  
+  - name: install mongodb client
+    ansible.builtin.dnf:
+      name: mongodb-mongosh
+      state: present
+
+  - name: check products loaded
+    ansible.builtin.command: mongosh --host "{{ MONGODB_HOST }}" --quiet  --eval 'db.getMongo().getDBNames().indexOf("catalogue")'
+    register: catalogue_output
+
+  - name: print the output
+    ansible.builtin.debug:
+      msg: "{{ catalogue_output }}"
+
+  - name: load the products
+    ansible.builtin.shell: mongosh --host "{{ MONGODB_HOST }}" </app/db/master-data.js
+    when: catalogue_output.stdout  | int < 0
+
+  - name: start catalogue
+    ansible.builtin.service:
+      name: catalogue
+      state: restarted
+      enabled: yes
